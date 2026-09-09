@@ -1,0 +1,65 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Ephemeral CI/CD runner orchestrator for the Module 3 lab. Invoked by a
+  CodeCommit repository trigger; launches one runner MicroVM per push.
+
+Parameters:
+  FunctionName:
+    Type: String
+    Default: ci-runner-orchestrator
+    Description: Name for the Lambda function.
+
+  FunctionRoleName:
+    Type: String
+    Default: DurableOrchestratorRole
+    Description: >
+      Name of the pre-existing IAM role for the Lambda function.
+      Provisioned by common.yml at event provision time. It can launch,
+      poll, and token MicroVMs, pass the runner execution role, and read
+      CodeCommit pull requests.
+
+  ImageArn:
+    Type: String
+    Description: >
+      ARN of the CI runner MicroVM image, produced by runner/build-image.sh.
+
+  MvmExecutionRoleArn:
+    Type: String
+    Description: >
+      ARN of the MicroVM execution role the runner runs as. Set from the
+      workshop's common.yml output.
+
+Resources:
+  CiRunnerOrchestrator:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: python3.13
+    Properties:
+      FunctionName: !Ref FunctionName
+      CodeUri: ./
+      Handler: lambda_function.lambda_handler
+      Runtime: python3.13
+      Timeout: 120
+      MemorySize: 256
+      Role: !Sub arn:aws:iam::${AWS::AccountId}:role/${FunctionRoleName}
+      Environment:
+        Variables:
+          MVM_REGION: !Ref AWS::Region
+          MVM_IMAGE_ARN: !Ref ImageArn
+          MVM_EXECUTION_ROLE_ARN: !Ref MvmExecutionRoleArn
+      # Publishes a new numbered version on every deploy AND updates the
+      # 'live' alias to point at it, so the CodeCommit trigger can bind to
+      # a stable alias name instead of a numbered version.
+      AutoPublishAlias: live
+
+Outputs:
+  FunctionArn:
+    Description: Unqualified ARN of the orchestrator function
+    Value: !GetAtt CiRunnerOrchestrator.Arn
+
+  FunctionLiveAliasArn:
+    Description: >
+      Qualified ARN pointing at the 'live' alias. Use this as the
+      destinationArn when wiring up the CodeCommit repository trigger.
+    Value: !Sub arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${FunctionName}:live

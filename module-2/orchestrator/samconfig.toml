@@ -1,0 +1,13 @@
+# SAM CLI configuration for the Module 2 durable orchestrator.
+# Removes the need for the participant to pass --stack-name, --capabilities,
+# and --resolve-s3 on every `sam deploy` invocation.
+version = 0.1
+
+[default.global.parameters]
+stack_name = "durable-orchestrator"
+
+[default.deploy.parameters]
+resolve_s3 = true
+capabilities = "CAPABILITY_IAM"
+confirm_changeset = false
+fail_on_empty_changeset = false

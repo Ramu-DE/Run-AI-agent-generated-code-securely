@@ -1,0 +1,60 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Multi-tenant SaaS control plane for the Module 4 lab. A Lambda behind an
+  API Gateway HTTP API that routes each tenant to its own on-demand MicroVM.
+
+Parameters:
+  FunctionName:
+    Type: String
+    Default: saas-control-plane
+    Description: Name for the Lambda function.
+
+  FunctionRoleName:
+    Type: String
+    Default: DurableOrchestratorRole
+    Description: >
+      Name of the pre-existing IAM role for the Lambda function. Provisioned
+      by common.yml at event provision time. It can launch, poll, and token
+      MicroVMs and pass the tenant execution role.
+
+  ImageArn:
+    Type: String
+    Description: ARN of the tenant app MicroVM image, from tenant-app/build-image.sh.
+
+  MvmExecutionRoleArn:
+    Type: String
+    Description: >
+      ARN of the MicroVM execution role each tenant VM runs as. Set from the
+      workshop's common.yml output.
+
+Resources:
+  SaasControlPlane:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: python3.13
+    Properties:
+      FunctionName: !Ref FunctionName
+      CodeUri: ./
+      Handler: lambda_function.lambda_handler
+      Runtime: python3.13
+      Timeout: 60
+      MemorySize: 256
+      Role: !Sub arn:aws:iam::${AWS::AccountId}:role/${FunctionRoleName}
+      Environment:
+        Variables:
+          MVM_REGION: !Ref AWS::Region
+          MVM_IMAGE_ARN: !Ref ImageArn
+          MVM_EXECUTION_ROLE_ARN: !Ref MvmExecutionRoleArn
+      # An API Gateway HTTP API fronts the control plane. The catch-all
+      # $default route sends every method and path to the function. The route
+      # has no authorizer, which keeps the lab simple; a production API would
+      # add one (for example Amazon Cognito or a Lambda authorizer).
+      Events:
+        Proxy:
+          Type: HttpApi
+
+Outputs:
+  ControlPlaneUrl:
+    Description: Public HTTPS endpoint of the SaaS control plane
+    Value: !GetAtt ServerlessHttpApi.ApiEndpoint

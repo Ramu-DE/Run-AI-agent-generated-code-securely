@@ -1,0 +1,74 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Durable orchestrator Lambda for the MicroVM Kiro code review lab (Module 2).
+  Declarative replacement for the imperative build-and-deploy.sh from Step 5.
+
+Parameters:
+  FunctionName:
+    Type: String
+    Default: durable-orchestrator
+    Description: Name for the Lambda function.
+
+  FunctionRoleName:
+    Type: String
+    Default: DurableOrchestratorRole
+    Description: >
+      Name of the pre-existing IAM role for the Lambda function.
+      Provisioned by common.yml at event provision time.
+
+  ImageArn:
+    Type: String
+    Description: >
+      ARN of the callback-enabled Kiro reviewer MicroVM image, produced
+      by reviewer-async/build-image.sh.
+
+  MvmExecutionRoleArn:
+    Type: String
+    Description: >
+      ARN of the MicroVM execution role that the reviewer runs as.
+      Set from the workshop's common.yml output.
+
+Resources:
+  DurableOrchestrator:
+    Type: AWS::Serverless::Function
+    Metadata:
+      # sam build pip-installs requirements.txt against a python3.13
+      # toolchain. Durable Functions require Python 3.13 at both build
+      # and runtime — 3.11 will fail the deploy with a runtime error.
+      BuildMethod: python3.13
+    Properties:
+      FunctionName: !Ref FunctionName
+      CodeUri: ./
+      Handler: lambda_function.lambda_handler
+      Runtime: python3.13
+      Timeout: 900
+      MemorySize: 512
+      Role: !Sub arn:aws:iam::${AWS::AccountId}:role/${FunctionRoleName}
+      # Immutable after creation. Changing these values would trigger a
+      # function REPLACEMENT on the next sam deploy, dropping any
+      # in-flight durable executions. Change with care.
+      DurableConfig:
+        ExecutionTimeout: 3600
+        RetentionPeriodInDays: 7
+      Environment:
+        Variables:
+          MVM_REGION: !Ref AWS::Region
+          MVM_IMAGE_ARN: !Ref ImageArn
+          MVM_EXECUTION_ROLE_ARN: !Ref MvmExecutionRoleArn
+      # Publishes a new numbered version on every deploy AND updates
+      # the 'live' alias to point at it. Replaces the shell script's
+      # `aws lambda publish-version` and lets the CodeCommit trigger
+      # bind to a stable alias name instead of a numbered version.
+      AutoPublishAlias: live
+
+Outputs:
+  FunctionArn:
+    Description: Unqualified ARN of the orchestrator function
+    Value: !GetAtt DurableOrchestrator.Arn
+
+  FunctionLiveAliasArn:
+    Description: >
+      Qualified ARN pointing at the 'live' alias. Use this as the
+      destinationArn when wiring up the CodeCommit repository trigger.
+    Value: !Sub arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${FunctionName}:live
