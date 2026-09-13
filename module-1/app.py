@@ -95,6 +95,8 @@ def execute_code(code: str) -> dict:
 class HookHandler(BaseHTTPRequestHandler):
     """Handles MicroVM lifecycle hook callbacks from the runtime."""
 
+    _raw_body = b""
+
     def log_message(self, format, *args):
         logger.info(f"HOOK {format % args}")
 
@@ -108,7 +110,16 @@ class HookHandler(BaseHTTPRequestHandler):
 
     def read_body(self) -> dict:
         length = int(self.headers.get("Content-Length", 0))
-        return json.loads(self.rfile.read(length)) if length else {}
+        raw = self.rfile.read(length) if length else b""
+        self._raw_body = raw
+        if not raw:
+            return {}
+        try:
+            parsed = json.loads(raw)
+            return parsed if isinstance(parsed, dict) else {}
+        except json.JSONDecodeError:
+            logger.warning(f"hook body was not valid JSON: {raw[:200]!r}")
+            return {}
 
     def do_POST(self):
         global MICROVM_ID
@@ -120,18 +131,36 @@ class HookHandler(BaseHTTPRequestHandler):
             logger.info("/health — application is up and running")
             self.send_json(200, {"status": "I'm here!"})
         
-        if self.path.endswith("/ready"):
+        elif self.path.endswith("/ready"):
             # Called during image build — snapshot is taken after this returns 200.
             # Your application must be fully started before this hook fires.
             logger.info("/ready — application is up, snapshot will be taken")
             self.send_json(200, {"status": "ready"})
 
-        elif self.path.endswith("/launch"):
-            # Called after VM is launched from snapshot.
-            # Use to reset any randomness or validate application health.
-            MICROVM_ID = body.get("microVmId")
-            logger.info(f"/launch — microVmId={MICROVM_ID}")
-            self.send_json(200, {"status": "launched"})
+        elif self.path.endswith("/run") or self.path.endswith("/launch"):
+            # Called after the VM is launched from the snapshot.
+            # The MicroVM runtime posts to .../runtime/v1/run — "/launch" is
+            # kept only as an alias for older docs. Returning anything other
+            # than 200 here makes Lambda terminate the VM immediately with
+            # "Run lifecycle hook returned HTTP status <code>".
+            #
+            # The run payload does not reliably carry the MicroVM id, so try
+            # the documented key, then common variants, then the header the
+            # proxy adds. Log the raw body so the real contract is visible.
+            logger.info(f"/run raw body={self._raw_body[:300]!r}")
+            MICROVM_ID = (
+                body.get("microVmId")
+                or body.get("microvmId")
+                or body.get("microVmID")
+                or self.headers.get("X-Amz-Microvm-Id")
+                or os.environ.get("AWS_LAMBDA_MICROVM_ID")
+            )
+            logger.info(
+                f"/run — microVmId={MICROVM_ID} "
+                f"image={os.environ.get('AWS_LAMBDA_MICROVM_IMAGE_NAME')} "
+                f"version={os.environ.get('AWS_LAMBDA_MICROVM_IMAGE_VERSION')}"
+            )
+            self.send_json(200, {"status": "launched", "microvm_id": MICROVM_ID})
 
         elif self.path.endswith("/suspend"):
             # Called before VM is suspended.
@@ -152,7 +181,11 @@ class HookHandler(BaseHTTPRequestHandler):
             self.send_json(200, {"status": "terminating"})
 
         else:
-            self.send_json(404, {"error": "unknown hook"})
+            # Unknown hook: respond 200 on purpose. Lambda terminates the
+            # MicroVM if a lifecycle hook returns a non-200 status, so an
+            # unrecognised (or newly added) hook must not fail the VM.
+            logger.warning(f"unknown hook {self.path} — returning 200")
+            self.send_json(200, {"status": "ok", "hook": self.path})
 
 
 # ── Startup ───────────────────────────────────────────────────────────────────

@@ -1,0 +1,18 @@
+# Unrelated project that happens to live in this directory — never publish it.
+Graph_utlity/
+
+# SAM build output
+.aws-sam/
+
+# Build artifacts uploaded to S3 by the build-image.sh scripts
+*.zip
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Local env / editor
+.env
+.DS_Store
