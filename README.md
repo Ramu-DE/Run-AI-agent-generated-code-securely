@@ -8,12 +8,15 @@ Every module in this repository has been **deployed and verified end to end** ag
 a real AWS account. Two genuine bugs were found and fixed along the way — both are
 documented in [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
 
-| Module | What it builds | Core idea |
-|---|---|---|
-| [module-1](module-1) | Sandboxed code-execution API | MicroVM lifecycle + hooks |
-| [module-2](module-2) | AI code reviewer on pull requests | Durable orchestration + callback pattern |
-| [module-3-ci-runner](module-3-ci-runner) | Ephemeral CI runner | One disposable VM per push |
-| [module-4-saas](module-4-saas) | Multi-tenant SaaS control plane | One VM per tenant + token vending machine |
+| Module | What it builds | Core idea | Full walkthrough |
+|---|---|---|---|
+| [module-1](module-1) | Sandboxed code-execution API | MicroVM lifecycle + hooks | **[MODULE-1.md](docs/modules/MODULE-1.md)** |
+| [module-2](module-2) | AI code reviewer on pull requests | Durable orchestration + callback pattern | **[MODULE-2.md](docs/modules/MODULE-2.md)** |
+| [module-3-ci-runner](module-3-ci-runner) | Ephemeral CI runner | One disposable VM per push | **[MODULE-3.md](docs/modules/MODULE-3.md)** |
+| [module-4-saas](module-4-saas) | Multi-tenant SaaS control plane | One VM per tenant + token vending machine | **[MODULE-4.md](docs/modules/MODULE-4.md)** |
+
+Start with **[docs/modules/](docs/modules/README.md)** — a walkthrough per module giving
+the architecture, the complete flow, and the purpose of every command and flag.
 
 Concept guides:
 
@@ -22,6 +25,7 @@ Concept guides:
 - **[docs/DOCKER.md](docs/DOCKER.md)** — Docker basics, and why these Dockerfiles are
   built by AWS rather than by a local Docker daemon.
 - **[docs/CICD.md](docs/CICD.md)** — the CI/CD pipelines, trigger wiring, and durable execution.
+- **[docs/COMMANDS.md](docs/COMMANDS.md)** — every command used, with the purpose of each flag.
 - **[docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)** — the failures hit and how they were diagnosed.
 
 ---
@@ -146,6 +150,8 @@ Verified responses:
 > authentication of its own beyond the proxy auth token. Do not expose it to
 > untrusted callers without adding authentication and egress restrictions.
 
+> Full step-by-step flow with every command explained: **[docs/modules/MODULE-1.md](docs/modules/MODULE-1.md)**
+
 ## Module 2 — AI code review with durable orchestration
 
 A push to `feature/bad-code` fires a CodeCommit trigger → a **durable** Lambda
@@ -175,6 +181,8 @@ The interesting mechanic: `callback.result()` **suspends the orchestrator** with
 compute billed while Claude works, then the VM wakes it via
 `SendDurableExecutionCallbackSuccess`. Verified in the logs as several short
 invocations rather than one long one, on runtime `python:3.13.DurableFunction.v40`.
+
+> Full step-by-step flow with every command explained: **[docs/modules/MODULE-2.md](docs/modules/MODULE-2.md)**
 
 ## Module 3 — Ephemeral CI runner
 
@@ -206,6 +214,8 @@ overwriting it:
 [{"name":"ai-review-trigger","branches":["feature/bad-code"],"events":["updateReference"]},
  {"name":"ci-runner-trigger","branches":["feature/ci-pipeline"],"events":["createReference","updateReference"]}]
 ```
+
+> Full step-by-step flow with every command explained: **[docs/modules/MODULE-3.md](docs/modules/MODULE-3.md)**
 
 ## Module 4 — Multi-tenant SaaS
 
@@ -242,6 +252,8 @@ the s3:GetObject action
 > impersonate any tenant. That is acceptable for a lab; for anything real, put a
 > JWT/Cognito or Lambda authorizer on the route and derive the tenant from verified
 > token claims, never from a raw request header.
+
+> Full step-by-step flow with every command explained: **[docs/modules/MODULE-4.md](docs/modules/MODULE-4.md)**
 
 ---
 
