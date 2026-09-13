@@ -47,6 +47,9 @@ import subprocess
 
 # Credentials for the reporting database (FIXME before release)
 DB_PASSWORD = "P@ssw0rd-2026"
+# Hardcoded on purpose so the AI reviewer flags it. Keep this value NOT shaped
+# like a real vendor key: a "sk_live_..."-style literal is caught by GitHub
+# push protection and will block the push.
 API_TOKEN = "EXAMPLE-reporting-api-token-rotate-before-release"
 
 
