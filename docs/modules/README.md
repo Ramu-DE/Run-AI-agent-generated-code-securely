@@ -76,6 +76,28 @@ machine" and "warm tenant server" with no other code changes.
 
 ---
 
+## Measured cost of each module
+
+From [../METRICS.md](../METRICS.md) — real runs, not estimates.
+
+| Module | Image build | End to end | Billed compute | Note |
+|---|---|---|---|---|
+| 1 | 99–160 s | n/a (manual) | n/a | launch ~3.6 s, then ~35 ms per call |
+| 2 | 153 s | **80.9 s** | **~3 s** across 4 invocations | AI call dominates (~60 s) |
+| 3 | 120 s | **26.0 s** | ~1.7 s avg × 2 | ~25 s of the 26 is fixed overhead |
+| 4 | 111 s | 2.73 s cold / ~60 ms warm | ~0.6 s avg × 16 | ≈45× cold-to-warm ratio |
+
+Two conclusions worth carrying into your own designs:
+
+- **Module 2 justifies durable execution; module 3 does not.** 80.9 s of wall-clock for
+  ~3 s of billed compute is the whole point of suspending. Module 3 finishes in 26 s and
+  never waits, so durability would be pure complexity.
+- **There is a floor of roughly 12–15 s of fixed overhead** per triggered pipeline
+  (trigger + launch + clone + comment). One VM per push is right for jobs measured in
+  tens of seconds; for a 200 ms lint check the overhead dominates.
+
+---
+
 ## The hook rule, in one line
 
 **A lifecycle hook that returns anything other than 200 destroys the MicroVM.**
@@ -101,4 +123,5 @@ Details and evidence: [../MICROVM.md](../MICROVM.md) and
 - **[../DOCKER.md](../DOCKER.md)** — Docker basics, and why no local daemon is needed
 - **[../CICD.md](../CICD.md)** — trigger wiring, durable execution, debugging a dead pipeline
 - **[../COMMANDS.md](../COMMANDS.md)** — every command used, with its purpose
+- **[../METRICS.md](../METRICS.md)** — measured build, launch, latency and pipeline numbers
 - **[../TROUBLESHOOTING.md](../TROUBLESHOOTING.md)** — real root causes, including the false leads

@@ -47,6 +47,42 @@ blocking on a callee. That inversion is the whole design.
 
 ---
 
+## 1b. Flow diagram
+
+```mermaid
+sequenceDiagram
+    actor Dev
+    participant CC as CodeCommit
+    participant Orc as durable-orchestrator
+    participant Svc as Lambda MicroVMs
+    participant VM as Reviewer MicroVM
+    participant BR as Bedrock Claude
+
+    Dev->>CC: git push feature/bad-code
+    CC->>Orc: trigger (updateReference) -> :live alias
+    Orc->>CC: find open PR for branch
+    Orc->>Svc: step: run_microvm
+    Svc->>VM: restore snapshot, POST /run
+    Orc->>Svc: wait_for_condition until RUNNING (~4 s)
+    Orc->>Svc: step: create_auth_token (port 9000)
+    Orc->>Orc: create_callback -> callback_id
+    Orc->>VM: step: POST /review with callback_id
+    VM-->>Orc: 202 accepted (immediate)
+    Note over Orc: callback.result()<br/>SUSPENDS - 0 compute billed
+    VM->>CC: git clone --no-checkout, git diff
+    VM->>BR: claude -p on the diff (~60 s)
+    BR-->>VM: review markdown
+    VM->>CC: post-comment-for-pull-request
+    VM->>Orc: SendDurableExecutionCallbackSuccess
+    Note over Orc: RESUMES from checkpoint
+    Orc->>Svc: step: terminate_microvm
+    Note over Dev,BR: 80.9 s end to end<br/>~3 s billed across 4 invocations
+```
+
+Timings from [../METRICS.md](../METRICS.md).
+
+---
+
 ## 2. The files
 
 | Path | Role |

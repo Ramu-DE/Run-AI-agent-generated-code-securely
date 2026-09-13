@@ -48,6 +48,38 @@ cannot leak a machine.
 
 ---
 
+## 1b. Flow diagram
+
+```mermaid
+sequenceDiagram
+    actor Dev
+    participant CC as CodeCommit
+    participant Orc as ci-runner-orchestrator
+    participant Svc as Lambda MicroVMs
+    participant VM as Runner MicroVM
+
+    Dev->>CC: git push feature/ci-pipeline (creates branch)
+    CC->>Orc: trigger (createReference) -> :live alias
+    Orc->>CC: find open PR ... none exists
+    Orc->>CC: create_pull_request -> PR #2
+    Orc->>Svc: run_microvm (autoResumeEnabled false)
+    Svc->>VM: restore snapshot, POST /run
+    Orc->>Svc: wait_until_running (~4 s)
+    Orc->>Svc: create_auth_token (port 9000)
+    Orc->>VM: POST /run with the job
+    VM-->>Orc: 202 accepted
+    Note over Orc: returns immediately<br/>no waiting, no durability needed
+    VM->>CC: git clone, git checkout source_commit
+    VM->>VM: bash ci/steps.sh (compile + unittest)
+    VM->>CC: post-comment: pass/fail + exit code
+    Note over VM: idle 60 s -> TERMINATED (one-shot)
+    Note over Dev,VM: 26.0 s end to end<br/>~25 s of that is fixed overhead
+```
+
+Timings from [../METRICS.md](../METRICS.md).
+
+---
+
 ## 2. The files
 
 | Path | Role |

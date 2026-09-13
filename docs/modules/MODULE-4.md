@@ -60,6 +60,53 @@ Two isolation layers, and they are independent:
 
 ---
 
+## 1b. Flow diagram
+
+```mermaid
+sequenceDiagram
+    actor C as Client X-Tenant acme
+    participant GW as API Gateway HTTP API
+    participant CP as saas-control-plane
+    participant Svc as Lambda MicroVMs
+    participant VM as acme MicroVM
+    participant STS
+    participant S3
+
+    Note over C,S3: COLD - first request for this tenant
+    C->>GW: GET /api/files
+    GW->>CP: $default route (NO authorizer)
+    CP->>CP: tenant from header, cache MISS
+    CP->>Svc: run_microvm (autoResumeEnabled true)
+    CP->>Svc: poll RUNNING, then mint token (port 8080)
+    CP->>VM: proxy + X-Tenant + X-Microvm-Id
+    VM->>STS: AssumeRole + session policy scoped to acme/
+    STS-->>VM: scoped credentials (900 s)
+    VM->>S3: list_objects_v2 prefix acme/
+    S3-->>VM: acme/notes.txt
+    VM-->>CP: 200
+    CP-->>C: 200 - measured 2.73 s
+
+    Note over C,S3: WARM - later requests
+    C->>GW: GET /api/info
+    GW->>CP: $default route
+    CP->>CP: cache HIT (same VM, token still valid)
+    CP->>VM: proxy
+    VM-->>CP: 200
+    CP-->>C: 200 - measured ~60 ms
+
+    Note over C,S3: CROSS-TENANT attempt
+    C->>GW: GET /api/files?tenant=globex
+    GW->>CP: proxied with acme credentials
+    CP->>VM: proxy (X-Tenant still acme)
+    VM->>S3: list prefix globex/ using acme session
+    S3-->>VM: AccessDenied - no session policy allows it
+    VM-->>C: 403 denied by IAM, not by app code
+```
+
+Timings from [../METRICS.md](../METRICS.md).
+
+---
+
 ## 2. The files
 
 | Path | Role |

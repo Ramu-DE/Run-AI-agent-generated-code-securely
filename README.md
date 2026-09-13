@@ -26,7 +26,52 @@ Concept guides:
   built by AWS rather than by a local Docker daemon.
 - **[docs/CICD.md](docs/CICD.md)** — the CI/CD pipelines, trigger wiring, and durable execution.
 - **[docs/COMMANDS.md](docs/COMMANDS.md)** — every command used, with the purpose of each flag.
+- **[docs/METRICS.md](docs/METRICS.md)** — measured build, launch, and latency numbers.
 - **[docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)** — the failures hit and how they were diagnosed.
+
+---
+
+## How the four modules relate
+
+```mermaid
+flowchart TD
+    subgraph shared["Shared machinery — every module uses these"]
+        IMG["Dockerfile + app.py<br/>zip to S3<br/>create-microvm-image"]
+        VM["run-microvm<br/>poll RUNNING<br/>create-microvm-auth-token"]
+        IMG --> VM
+    end
+
+    VM --> M1["<b>Module 1</b><br/>sandboxed code execution<br/>you drive every API call"]
+    VM --> M2["<b>Module 2</b><br/>AI code review<br/>durable Lambda + callback"]
+    VM --> M3["<b>Module 3</b><br/>ephemeral CI runner<br/>one-shot VM per push"]
+    VM --> M4["<b>Module 4</b><br/>multi-tenant SaaS<br/>one warm VM per tenant"]
+
+    M1 -.->|"now automate it"| M2
+    M2 -.->|"drop the waiting"| M3
+    M3 -.->|"per tenant, not per job"| M4
+
+    CC[("CodeCommit<br/>repository triggers")] --> M2
+    CC --> M3
+    GW[("API Gateway<br/>HTTP API")] --> M4
+```
+
+Each module reuses the previous one's machinery and adds exactly one idea. Full
+walkthroughs in **[docs/modules/](docs/modules/README.md)**.
+
+## Measured performance
+
+Real numbers from this account, methodology in [docs/METRICS.md](docs/METRICS.md):
+
+| Metric | Measured |
+|---|---|
+| Image build (server-side) | **99–160 s** depending on image weight |
+| MicroVM launch → `RUNNING` | **~3.6 s** |
+| Suspend → resume → serving | **~2.1 s** + **48 ms** first request |
+| Steady-state request latency | **~35–60 ms** |
+| Module 4 cold vs warm tenant | **2.73 s → ~60 ms** (≈45×) |
+| Module 2 review, end to end | **80.9 s** wall-clock, **~3 s** billed compute |
+| Module 3 CI build, end to end | **26.0 s** (~25 s of it fixed overhead) |
+| VMs self-terminated by idle policy | **8 of 8**, no cleanup code |
 
 ---
 

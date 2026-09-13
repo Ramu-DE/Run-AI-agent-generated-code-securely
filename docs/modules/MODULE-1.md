@@ -43,6 +43,44 @@ difference.
 
 ---
 
+## 1b. Flow diagram
+
+```mermaid
+sequenceDiagram
+    actor You
+    participant S3
+    participant Svc as Lambda MicroVMs
+    participant VM as MicroVM
+
+    Note over You,VM: BUILD - once (99-160 s measured)
+    You->>S3: zip app.py + Dockerfile, upload
+    You->>Svc: create-microvm-image
+    Svc->>S3: GetObject (build role)
+    Svc->>Svc: docker build (BuildKit, server-side)
+    Svc->>VM: start app, POST /ready on :9000
+    VM-->>Svc: 200 OK
+    Svc->>Svc: snapshot RAM
+    Svc-->>You: state SUCCESSFUL
+
+    Note over You,VM: RUN - many times
+    You->>Svc: run-microvm
+    Svc-->>You: microvmId + endpoint (PENDING, 1.12 s)
+    Svc->>VM: restore from snapshot
+    Svc->>VM: POST /run on :9000
+    VM-->>Svc: 200 OK (non-200 would kill the VM)
+    Note over VM: RUNNING after ~3.6 s
+    You->>Svc: create-microvm-auth-token (port 8080)
+    Svc-->>You: X-aws-proxy-auth token (1.03 s)
+    You->>VM: POST /execute + token + X-aws-proxy-port
+    VM->>VM: subprocess python3, 30 s timeout
+    VM-->>You: stdout, stderr, exit_code (~35 ms)
+    Note over VM: idle 600 s -> SUSPENDED -> TERMINATED
+```
+
+Timings from [../METRICS.md](../METRICS.md).
+
+---
+
 ## 2. The files
 
 | File | Role |
